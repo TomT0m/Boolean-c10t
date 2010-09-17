@@ -193,6 +193,18 @@ public:
     if (!level->islevel) {
       return p;
     }
+
+    if (s->use_limits &&
+        level->xPos > s->limits[0] &&
+        level->xPos < s->limits[1] &&
+        level->zPos > s->limits[2] &&
+        level->zPos < s->limits[3]
+       ) {
+      // render this level. See below.
+    } else {
+      // do nothing -- outside bounding box
+      return p;
+    }
     
     p->islevel = true;
     p->xPos = level->xPos;
@@ -413,7 +425,12 @@ void do_help() {
     << endl
     << "  -t, --top <int>           - splice from the top, must be less than 128" << endl
     << "  -b, --bottom <int>        - splice from the bottom, must be greater than or" << endl
-    << "                              equal to 0" << endl
+    << "  -L, --limits <int-list>   - limit render to certain area. int-list form:" << endl
+    << "                              North,South,West,East, e.g." << endl
+    << "                              -L 0,100,-10,20 limiting between 0 and 100 in the " << endl
+    << "                              north-south direction and between -10 and 20 in " << endl
+    << "                              the east-west direction. " << endl
+    << "                              Note: South and West are the positive directions." << endl
     << endl
     << "Filtering options:" << endl
     << "  -e, --exclude <blockid>   - exclude block-id from render (multiple occurences" << endl
@@ -477,6 +494,7 @@ static struct option long_options[] =
    {"list-colors",      no_argument, 0, 'l'},
    {"top",              required_argument, 0, 't'},
    {"bottom",           required_argument, 0, 'b'},
+   {"limits",           required_argument, 0, 'L'},
    {"exclude",          required_argument, 0, 'e'},
    {"include",          required_argument, 0, 'i'},
    {"hide-all",         no_argument, 0, 'a'},
@@ -513,7 +531,9 @@ settings_t *init_settings() {
   s->night = false;
   s->debug = false;
   s->require_all = false;
-  
+  s->limits = new int[4];
+  s->use_limits = false;
+
   return s;
 }
 
@@ -527,6 +547,22 @@ int get_blockid(const char *blockid) {
   return atoi(blockid);
 }
 
+// Convert a string such as "-30,40,50,30" to the corresponding integer array,
+// and place the result in limits_rect.
+int* parse_limits(const char *limits_str, int** limits_rect) {
+  cout << "Limits String is " << limits_str << endl;
+  istringstream iss(limits_str);
+  string item;
+  for (int i=0; i < 4; i++) {
+    if (!getline(iss, item, ','))
+      break;
+    (*limits_rect)[i] = atoi(item.c_str());
+    // negative sign added -- south is +x, west is +z.
+    // also swap south and north, east and west with mod 2 stuff.
+  }
+  return *limits_rect;
+}
+
 int main(int argc, char *argv[]){
   mc::initialize_constants();
 
@@ -538,7 +574,7 @@ int main(int argc, char *argv[]){
 
   int option_index;
   
-  while ((c = getopt_long(argc, argv, "vxcDNnqyalshw:o:e:t:b:i:m:r:", long_options, &option_index)) != -1)
+  while ((c = getopt_long(argc, argv, "vxcDNnqyalshw:o:e:t:b:i:m:r:L:", long_options, &option_index)) != -1)
   {
     blockid = -1;
     
@@ -605,6 +641,10 @@ int main(int argc, char *argv[]){
     case 'Q':
       s->require_all = true;
       break;
+    case 'L':
+      s->limits = parse_limits(optarg, &(s->limits));
+      s->use_limits = true;
+      break;
     case '?':
       if (optopt == 'c')
         fprintf (stderr, "Option -%c requires an argument.\n", optopt);
@@ -623,6 +663,11 @@ int main(int argc, char *argv[]){
   if (!s->silent) {
     cout << "type '-h' for help" << endl;
     cout << endl;
+    if (s->use_limits) {
+      cout << "Using limits: ";
+      for (int i=0; i < 4; i++) cout << s->limits[i] << ",";
+      cout << endl;
+    }
   }
 
   if (!do_world(s, world, output))  {

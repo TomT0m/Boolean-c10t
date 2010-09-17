@@ -39,7 +39,7 @@ public:
     return first.xPos < second.xPos;;
   }
   
-  World(std::string world_path)
+  World(settings_t *s, std::string world_path)
     : world_path(world_path), min_x(INT_MAX), min_z(INT_MAX), max_x(INT_MIN), max_z(INT_MIN)
   {
     dirlist broadlisting(world_path);
@@ -50,6 +50,16 @@ public:
         Level leveldata(broadlisting.next().c_str(), true);
         
         if (!leveldata.islevel || leveldata.grammar_error) {
+          continue;
+        }
+
+        if (s->use_limits && (
+            leveldata.xPos <= s->limits[0] ||
+            leveldata.xPos >= s->limits[1] ||
+            leveldata.zPos <= s->limits[2] ||
+            leveldata.zPos >= s->limits[3])
+           ) {
+          // render this level. See below.
           continue;
         }
         

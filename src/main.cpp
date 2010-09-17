@@ -193,18 +193,6 @@ public:
     if (!level->islevel) {
       return p;
     }
-
-    if (s->use_limits &&
-        level->xPos > s->limits[0] &&
-        level->xPos < s->limits[1] &&
-        level->zPos > s->limits[2] &&
-        level->zPos < s->limits[3]
-       ) {
-      // render this level. See below.
-    } else {
-      // do nothing -- outside bounding box
-      return p;
-    }
     
     p->islevel = true;
     p->xPos = level->xPos;
@@ -233,7 +221,7 @@ inline void calc_image_width_height(settings_t *s, int diffx, int diffz, int &im
     break;
   case ObliqueAngle:
     // yes, these are meant to be flipped
-    c.get_obliqueangle_limits(image_height, image_width);
+    c.get_obliqueangle_limits(image_width, image_height);
     break;
   }
 }
@@ -242,13 +230,13 @@ inline void calc_image_partial(settings_t *s, partial &p, Image &all, int minx, 
   int diffx = maxx - minx;
   int diffz = maxz - minz;
   
-  Cube c(diffx, 1, diffz);
+  Cube c(diffx, 16, diffz);
   int xoffset, yoffset;
   
   switch (s->mode) {
   case Top:
     {
-      point topleft(diffz - (p.zPos - minz), 1, (p.xPos - minx));
+      point topleft(diffz - (p.zPos - minz), 16, (p.xPos - minx));
       c.project_top(topleft, xoffset, yoffset);
       xoffset *= mc::MapX;
       yoffset *= mc::MapZ;
@@ -257,7 +245,7 @@ inline void calc_image_partial(settings_t *s, partial &p, Image &all, int minx, 
     break;
   case Oblique:
     {
-      point topleft(diffz - (p.zPos - minz), 1, (p.xPos - minx));
+      point topleft(diffz - (p.zPos - minz), 16, (p.xPos - minx));
       c.project_oblique(topleft, xoffset, yoffset);
       xoffset *= mc::MapX;
       yoffset *= mc::MapZ;
@@ -266,7 +254,7 @@ inline void calc_image_partial(settings_t *s, partial &p, Image &all, int minx, 
     break;
   case ObliqueAngle:
     {
-      point topleft(p.xPos - minx, 1, p.zPos - minz);
+      point topleft(diffz - (p.zPos - minz), 16, (p.xPos - minx));
       c.project_obliqueangle(topleft, xoffset, yoffset);
       xoffset *= mc::MapX;
       yoffset *= mc::MapZ;
@@ -304,7 +292,7 @@ bool do_world(settings_t *s, string world_path, string output) {
   }
   
   if (!s->silent) cout << "Performing broad phase scan of world directory... " << flush;
-  World world(world_path);
+  World world(s, world_path);
   if (!s->silent) cout << "found " << world.levels.size() << " files!" << endl;
 
   if (s->debug) {

@@ -29,7 +29,7 @@ void register_byte_array(void *context, nbt::String name, nbt::ByteArray *byte_a
     ((Level *)context)->blocks = byte_array;
     return;
   }
-
+  
   if (name.compare("SkyLight") == 0) {
     ((Level *)context)->skylight = byte_array;
     return;
@@ -323,7 +323,7 @@ ImageBuffer *Level::get_obliqueangle_image(settings_t *s)
       }
       
       for (int y = s->bottom; y < s->top; y++) {
-        point p(x, y, z);
+        point p(z, y, x);
         
         int _x = x, _z = z;
         transform_xz(s, _x, _z);

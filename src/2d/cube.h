@@ -59,8 +59,8 @@ public:
   }
   
   void get_obliqueangle_limits(int &rx, int &ry) {
-    rx = x * 2;
-    ry = y + z * 2;
+    rx = z + x;
+    ry = z + x + y;
   }
 };
 

@@ -11,6 +11,8 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/foreach.hpp>
 
+#include "selectors.hpp"
+
 using namespace std;
 using namespace boost;
 
@@ -114,6 +116,61 @@ bool parse_set(const char* set_str, int& blockid, color& c)
   return true;
 }
 
+
+bool parse_polyline(const string& limits_str, settings_t& s) {
+
+  std::cout << "parsing polyline" << std::endl; 
+  std::vector<std::string> limits;
+  boost::split(limits, limits_str, boost::is_any_of(","));
+
+  std::cout << "parsing polyline" << std::endl; 
+  size_t size = limits.size() ;
+  if (size < 4 || size % 2 != 0) {
+    error << "Polygon argument must of format: <x1>,<z1>,<x2>,<z2>[,<x1>,<z1>]+";
+    return false;
+  }
+
+  int nbpoints=size/2;
+  std::list<point_surface> line_to_follow;
+  for(int x=0; x<nbpoints; x++){
+	 
+	int X = atoi(limits[2*x].c_str());
+  	int Z = atoi(limits[2*x+1].c_str());
+	point_surface p(X,Z);
+	line_to_follow.push_back(p);
+	// out << "adding new point" << endl; 
+  }
+  s.lines_to_follow.push_back(line_to_follow);
+  return true;
+}
+
+
+point_surface parse_point(string point_str){
+
+  std::vector<std::string> coords;
+  boost::split(coords,point_str, boost::is_any_of(","));
+
+  int X = atoi(coords[0].c_str());
+  int Z = atoi(coords[1].c_str());
+
+  return point_surface(X,Z);
+
+}
+
+bool parse_center_point(string point, settings_t & s){
+	s.center=parse_point(point);
+	return true;
+}
+
+bool read_json_selector_spec(string filename, settings_t & s){
+	bool error=false;
+
+	// s.selector_json_path = fs::path(filename);
+	s.selector = selector_factory::from_json_spec(filename);
+
+	return true;
+}
+
 bool do_base_color_set(const char *set_str) {
   int blockid;
   color c;
@@ -185,30 +242,6 @@ bool parse_tuple(const string& str, settings_t& s, int& a, int& b) {
     return false;
   }
 
-  return true;
-}
-
-bool parse_polyline(const string& limits_str, settings_t& s) {
-  std::vector<std::string> limits;
-  boost::split(limits, limits_str, boost::is_any_of(","));
-  
-  size_t size = limits.size() ;
-  if (size < 4 || size % 2 != 0) {
-    error << "Polygon argument must of format: <x1>,<z1>,<x2>,<z2>[,<x1>,<z1>]+";
-    return false;
-  }
-
-  int nbpoints=size/2;
-  std::list<point_surface> line_to_follow;
-  for(int x=0; x<nbpoints; x++){
-	 
-	int X = atoi(limits[2*x].c_str());
-  	int Z = atoi(limits[2*x+1].c_str());
-	point_surface p(X,Z);
-	line_to_follow.push_back(p);
-	// out << "adding new point" << endl; 
-  }
-  s.lines_to_follow.push_back(line_to_follow);
   return true;
 }
 
@@ -332,6 +365,8 @@ int flag;
 
 struct option long_options[] =
  {
+    {"center",       	    		    required_argument,   0,       'u'},
+    {"selector-spec",                       required_argument,   0,       'J'},
     {"world",                               required_argument,   0,       'w'},
     {"output",                              required_argument,   0,       'o'},
     {"top",                                 required_argument,   0,       't'},
@@ -411,9 +446,8 @@ bool read_opts(settings_t& s, int argc, char* argv[])
 
   bool exclude_all = false;
 
-  while ((c = getopt_long(argc, argv, "DNvxcnHqzZyalshM:C:L:R:w:o:e:t:b:i:m:r:W:P:B:S:p:", long_options, &option_index)) != -1)
+  while ((c = getopt_long(argc, argv, "DNvxcnHqzZyalshM:C:L:R:w:o:e:t:b:i:m:r:W:P:B:S:p:Y:u:J:", long_options, &option_index)) != -1)
   {
-  while ((c = getopt_long(argc, argv, "DNvxcnHqzZyalshM:C:L:R:w:o:e:t:b:i:m:r:W:P:B:S:p:Y:", long_options, &option_index)) != -1)
     blockid = -1;
     
     if (c == 0) {
@@ -509,7 +543,7 @@ bool read_opts(settings_t& s, int argc, char* argv[])
         hints.push_back("`--write-markers' has been deprecated in favour of `--write-json' - use that instead and note the new json structure");
       case 16:
         s.write_json = true;
-
+	error << "json option !!";
         s.write_json_path = fs::system_complete(fs::path(optarg));
         
         {
@@ -695,6 +729,14 @@ bool read_opts(settings_t& s, int argc, char* argv[])
       }
       
       break;
+
+    case 'b':
+      s.bottom = atoi(optarg);
+      
+      if (!(s.bottom < s.top && s.bottom >= 0)) {
+        error << "Bottom limit must be between `0 - <top limit>', not " << s.bottom;
+        return false;
+      }
     case 'L':
       if (!parse_limits(optarg, s)) {
         return false;
@@ -712,19 +754,19 @@ bool read_opts(settings_t& s, int argc, char* argv[])
         error << "Radius too big";
         return false;
       }
+    case 'J':
+      if (!read_json_selector_spec(optarg,s)){
+         return false;
+      }
       break;
-     case 'Y':
+    case 'Y':
       if (!parse_polyline(optarg, s)) {
         error << "Invalid polyline format";
         return false;
       }
       break;
-
-   case 'b':
-      s.bottom = atoi(optarg);
-      
-      if (!(s.bottom < s.top && s.bottom >= 0)) {
-        error << "Bottom limit must be between `0 - <top limit>', not " << s.bottom;
+    case 'u':
+      if (!parse_center_point(optarg, s)) {
         return false;
       }
       

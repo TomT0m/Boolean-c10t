@@ -18,6 +18,7 @@
 #include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/foreach.hpp>
+#include <boost/range/sub_range.hpp>
 
 #include "config.hpp"
 
@@ -91,7 +92,6 @@ inline void cout_error(const string& message) {
 inline void cout_end() {
   cout << hex << std::setw(2) << setfill('0') << static_cast<int>(END_BYTE) << flush;
 }
-
 
 /*
  * Store part of a level rendered as a small image.
@@ -509,35 +509,38 @@ bool generate_map(
     out << "world: " << path_string(world_path) << endl;
   }
   
-  /*
-   * Scan the world for regions containing levels.
-   */
+  pallchunksel selector(new all_criterium_chunk_selector()); // selector;
+  pchunksel in_range_pred (new predicate_criterium<in_range_predicate> (in_range_predicate(s)));
   
-  all_criterium_chunk_selector selector;
-  in_range_predicate in_range(s);
-  pchunksel in_range_pred (new predicate_criterium<in_range_predicate> (in_range));
-  selector.add_criterium(in_range_pred);
-  typedef boost::shared_ptr<any_criterium_chunk_selector> panychunksel;
+  selector->add_criterium(in_range_pred);
+  if (s.selector != 0 ) { selector->add_criterium(s.selector) ;};
+
   panychunksel line_selector (new any_criterium_chunk_selector());
   if(s.lines_to_follow.size()>0){
-	for(std::list< std::list<point_surface> >::iterator it = s.lines_to_follow.begin() ; it!=s.lines_to_follow.end() ; ++it) {
-		 list<point_surface> line_to_follow=*it;
-	         std::list<point_surface>::iterator it = line_to_follow.begin();
-	
-		 point_surface debut=*it;
-		 it++; 
-		 for(;it!=line_to_follow.end();it++){
-			point_surface end=*it; 
-			is_chunk_on_line is(debut,end);
+        BOOST_FOREACH(std::list<point_surface> line_to_follow,s.lines_to_follow) {
+		typedef boost::iterator_range< std::list<point_surface>::iterator > ilist;
+		point_surface begin_line = line_to_follow.front(); 
+		
+		ilist points = boost::make_iterator_range(
+			(line_to_follow.begin())++, 
+			line_to_follow.end()
+		);
+
+		BOOST_FOREACH(point_surface end_line, points) {
+			is_chunk_on_line is(begin_line,end_line);
 			pchunksel p(new predicate_criterium<is_chunk_on_line>(is));
 			line_selector->add_criterium(p);
-			debut=end;
+			begin_line=end_line;
 	  	}
-		selector.add_criterium(line_selector);
+
+		selector->add_criterium(line_selector);
 		out << "added line criterium" << endl;
 	}
   } 
- 
+  s.selector = selector; 
+  /*
+   * Scan the world for regions containing levels.
+   */
   {
     nonstd::continious<unsigned int> reporter(out, 100, out_dot<unsigned int>, cout_uint_endl);
     mc::region_iterator iterator = world.get_iterator();
@@ -561,16 +564,15 @@ bool generate_map(
 
       BOOST_FOREACH(mc::utils::level_coord c, coords) {
         mc::level_info::level_info_ptr level(new mc::level_info(region, c));
-        
         mc::utils::level_coord coord = level->get_coord();
-        
-        if (! selector.select(coord)) {
+
+        if (! selector->select_level(coord)){
           ++filtered_levels;
           continue;
         }
         
         mc::rotated_level_info rlevel =
-          mc::rotated_level_info(level, coord.rotate(s.rotation));
+          mc::rotated_level_info(level, coord.rotate(s.rotation),coord);
         
         levels.insert( levels_map::value_type(rlevel.get_coord(), rlevel));
 
@@ -618,7 +620,8 @@ bool generate_map(
   engine_s.top = s.top;
   engine_s.bottom = s.bottom;
   engine_s.excludes = s.excludes;
-  
+  engine_s.selector = s.selector;
+ 
   if (s.engine_use) {
     dl_t* dl = dl_open(path_string(s.engine_path).c_str());
 
@@ -780,7 +783,6 @@ bool generate_map(
     renderer.start();
 
     unsigned int prebuffer_limit = prebuffer / 2;
-
     uint32_t id = 1;
 
     while (level_iter != levels.end() || queued > 0) {
@@ -807,6 +809,7 @@ bool generate_map(
           job.level = level;
           job.coord = rotated_level_info.get_coord();
           job.path = level_info->get_path();
+	  job.nonrotated_coord = rotated_level_info.get_original_coord();
 
           renderer.give(job);
           ++queued;
@@ -899,7 +902,7 @@ bool generate_map(
     
     if (s.show_signs && signs.size() > 0) {
       push_sign_markers(s, font, signs, markers);
-    }
+   }
     
     if (s.show_coordinates) {
       push_coordinate_markers(out, s, font, world, levels, markers);
